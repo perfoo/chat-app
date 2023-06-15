@@ -1,25 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { auth, database } from './firebase';
+import { database } from './firebase';
+import { v4 as uuidv4 } from 'uuid';
 
 const Chat = () => {
-  const [user, setUser] = useState(null);
   const [messages, setMessages] = useState([]);
   const [newMessage, setNewMessage] = useState('');
-
-  useEffect(() => {
-    // Check if a user is authenticated
-    const unsubscribe = auth.onAuthStateChanged((user) => {
-      if (user) {
-        setUser(user);
-      } else {
-        setUser(null);
-      }
-    });
-
-    return () => {
-      unsubscribe(); // Clean up the auth state listener
-    };
-  }, []);
+  const [userId, setUserId] = useState('');
 
   useEffect(() => {
     // Listen for new messages in the database
@@ -29,13 +15,58 @@ const Chat = () => {
       if (data) {
         const messageList = Object.values(data);
         setMessages(messageList);
+      } else {
+        setMessages([]); // Clear the messages when there are no new messages
       }
     });
-
+  
     return () => {
       messagesRef.off(); // Clean up the messages listener
     };
   }, []);
+
+  const generateRandomId = () => {
+    const characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+    let id = '';
+    for (let i = 0; i < 12; i++) {
+      id += characters.charAt(Math.floor(Math.random() * characters.length));
+    }
+    return id;
+  };
+
+  const getRandomColor = () => {
+    return '#' + Math.floor(Math.random() * 16777215).toString(16);
+  };
+
+  useEffect(() => {
+    // Generate a random ID and color for the user
+    let id = localStorage.getItem('chatUserId');
+    let color = localStorage.getItem('chatUserColor');
+
+    if (!id) {
+      id = generateRandomId();
+      localStorage.setItem('chatUserId', id);
+    }
+
+    if (!color) {
+      color = getRandomColor();
+      localStorage.setItem('chatUserColor', color);
+    }
+
+    setUserId(id);
+  }, []);
+
+  const renderMessage = (message) => {
+    const messageStyle = { color: message.color };
+    const messageKey = uuidv4(); // Generate a unique key for the message
+  
+    return (
+      <div key={messageKey}>
+        <strong style={messageStyle}>{message.userId}: </strong>
+        {message.text}
+      </div>
+    );
+  };
 
   const handleInputChange = (event) => {
     setNewMessage(event.target.value);
@@ -45,50 +76,48 @@ const Chat = () => {
     event.preventDefault();
 
     if (newMessage.trim() === '') {
-      return; // Skip empty messages
+      return;
     }
 
     const newMessageData = {
       text: newMessage,
-      userId: user.uid,
-      userName: user.displayName,
+      userId: userId,
+      color: localStorage.getItem('chatUserColor'),
+      createdAt: Date.now(), // Add the creation time to the message object
     };
 
-    // Save the new message to the database
     database.ref('messages').push(newMessageData);
 
     setNewMessage('');
   };
 
-  const renderMessage = (message) => {
-    return (
-      <div key={message.id}>
-        <strong>{message.userName}: </strong>
-        {message.text}
-      </div>
-    );
+  const handleClear = () => {
+    const currentTime = Date.now();
+    const filteredMessages = messages.filter((message) => {
+      const messageTime = message.createdAt || 0;
+      return messageTime >= currentTime;
+    });
+
+    setMessages(filteredMessages);
   };
 
   return (
     <div>
       <h1>Chat App</h1>
-      {user ? (
-        <div>
-          <div>
-            {messages.map((message) => renderMessage(message))}
-          </div>
-          <form onSubmit={handleSubmit}>
-            <input
-              type="text"
-              value={newMessage}
-              onChange={handleInputChange}
-            />
-            <button type="submit">Send</button>
-          </form>
-        </div>
-      ) : null}
+      <button onClick={handleClear}>Clear</button>
+      <div>
+        {messages.map((message) => renderMessage(message))}
+      </div>
+      <form onSubmit={handleSubmit}>
+        <input
+          type="text"
+          value={newMessage}
+          onChange={handleInputChange}
+        />
+        <button type="submit">Send</button>
+      </form>
     </div>
   );
-}
+};
 
 export default Chat;
